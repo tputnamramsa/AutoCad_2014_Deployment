@@ -1,0 +1,9 @@
+;Saves the current drawing in DXF format
+;Edit the version if needed.
+;
+;Begin script
+DXFOUT
+
+Version 2010
+16
+;End script

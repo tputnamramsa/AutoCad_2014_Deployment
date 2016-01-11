@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:src="clr-namespace:Autodesk.Windows;assembly=AdWindows">
+  <src:RibbonToolTip x:Key="MMU_0132">
+    <src:RibbonToolTip.ExpandedContent>
+      <StackPanel>
+        <TextBlock Background="AntiqueWhite" TextAlignment="Left">
+ Loads all detail layers into the current drawing. If a layer exists, it does <Bold>NOT</Bold> overwrite its properties.
+ </TextBlock>
+      </StackPanel>
+    </src:RibbonToolTip.ExpandedContent>
+  </src:RibbonToolTip>
+  <src:RibbonToolTip x:Key="MMU_0153">
+    <src:RibbonToolTip.ExpandedContent>
+      <StackPanel>
+        <TextBlock Background="AntiqueWhite" TextAlignment="Left">
+ Loads all elevation layers into the current drawing. If a layer exists, it does <Bold>NOT</Bold> overwrite its properties.
+ </TextBlock>
+      </StackPanel>
+    </src:RibbonToolTip.ExpandedContent>
+  </src:RibbonToolTip>
+  <src:RibbonToolTip x:Key="MMU_0172">
+    <src:RibbonToolTip.ExpandedContent>
+      <StackPanel>
+        <TextBlock Background="AntiqueWhite" TextAlignment="Left">
+ Loads all section layers into the current drawing. If a layer exists, it does <Bold>NOT</Bold> overwrite its properties.
+ </TextBlock>
+      </StackPanel>
+    </src:RibbonToolTip.ExpandedContent>
+  </src:RibbonToolTip>
+  <src:RibbonToolTip x:Key="MMU_0213">
+    <src:RibbonToolTip.ExpandedContent>
+      <StackPanel>
+        <TextBlock Background="AntiqueWhite" TextAlignment="Left">
+ Loads all landscape detail layers into the current drawing. If a layer exists, it does <Bold>NOT</Bold> overwrite its properties.
+ </TextBlock>
+      </StackPanel>
+    </src:RibbonToolTip.ExpandedContent>
+  </src:RibbonToolTip>
+  <src:RibbonToolTip x:Key="MMU_0251">
+    <src:RibbonToolTip.ExpandedContent>
+      <StackPanel>
+        <TextBlock Background="AntiqueWhite" TextAlignment="Left">
+ Loads all landscape elevation layers into the current drawing. If a layer exists, it does <Bold>NOT</Bold> overwrite its properties.
+ </TextBlock>
+      </StackPanel>
+    </src:RibbonToolTip.ExpandedContent>
+  </src:RibbonToolTip>
+  <src:RibbonToolTip x:Key="MMU_0270">
+    <src:RibbonToolTip.ExpandedContent>
+      <StackPanel>
+        <TextBlock Background="AntiqueWhite" TextAlignment="Left">
+ Loads all landscape section layers into the current drawing. If a layer exists, it does <Bold>NOT</Bold> overwrite its properties.
+ </TextBlock>
+      </StackPanel>
+    </src:RibbonToolTip.ExpandedContent>
+  </src:RibbonToolTip>
+</ResourceDictionary>

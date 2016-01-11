@@ -1,0 +1,403 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;
+;;Version 4.0  2013-11-06
+;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;Version notes
+;updated for 2010
+;updated for 2012 by Charles Prettyman
+;Updated to include code to detect and delete the Acad.vlx virus ; W2 2012-02-02
+
+; Revised 2/27/12 for R2012: [KCS]
+; ramsa_audit function added [KCS]
+; check MEASUREMENT sysvar [KCS]
+
+; 3/7/12: ramsa_audit revised [KCS]
+
+; 4/23/12:  c:RAMSA_XREFS2LAYERS added [KCS]
+;           c:RAMSA_DISABLE added [KCS]
+;           c:RAMSA_ENABLE added [KCS]
+
+; 6/29/12: disabled hidden frames selection [W2]
+; 7/17/12: automatically save workspace changes [W2]
+; 8/14/12: set default hatch pattern name [W2]
+;    "     set default hatch pattern scale [W2]
+;10/11/13: added regapps purge to drawing cleanup [W2]
+;  /14/14: added movebak (express tool) to redirect BAK files [W2]
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(vl-load-com)
+(setvar "cmdecho" 0) ; KJK
+
+;; Load KCS base functionality (used in various routines)
+(load (strcat rsa#support "KCS_Base")) ; KJK
+
+;; Load RAMSA Reactors
+(load (strcat rsa#support "Reactors")) ; KJK
+
+; RAMSA_DLG_INIT  [KJK - 3/30/10]
+; Initialize dialogue - returns dcl_id 
+; ARG: fname: .dcl file name (no extension) located in \Plugins\ folder
+; ARG dlg: May be supplied or nil for same as file name
+; Example: (setq dcl_id (ramsa_dlg_init "roomfill" "abc"))
+; Example: (setq dcl_id (ramsa_dlg_init "roomfill" nil))
+;
+(defun ramsa_dlg_init (fname dlg / dcl_id)
+  (if (null dlg)(setq dlg fname))
+  (setq 
+    fname (strcat rsa#plugins fname ".dcl")
+    dcl_id (load_dialog fname)
+  )
+  (if (= dcl_id -1)(progn
+    (princ (strcat "\nError: " (strcase fname) " not loaded! \n" ))
+    (exit)
+  ))
+  (if (not (new_dialog dlg dcl_id)) (progn
+    (princ (strcat "\nError: Dialog " (strcase dlg) " not loaded! \n" ))
+    (exit)
+  ))
+  dcl_id
+)
+
+
+;;load layer key styles, set RAMSA Standard as current LKS
+
+(if (not (member "aeclmgrlisp.arx" (arx)))
+  (arxload "aeclmgrlisp.arx")
+)
+
+(if (/= (getenv "kjk_dev") "1")(progn ; skip this if developer outside RAMSA
+  (AecImportLayerKeyingStyle "\\\\ramsacfs\\Project\\Standards\\RAMSA CAD Standards\\RamsaLKS.dwg" "RAMSA Standard")
+  (AecSetCurrentLayerKeying "Ramsa Standard")
+))
+
+
+;; set miscellaneous variables for performance tuning
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;Import registry settings to control AEC Content root path and databases
+;(startapp "regedit /s O:\\Reference\\AutoCAD\\2010\\Support\\databases.reg")
+(startapp (strcat "regedit /s " rsa#support "databases.reg")) ; KJK
+
+;; Load acad.lsp into every drawing opened
+(setvar "acadlspasdoc" 1)
+
+;; disable single document interface
+(setvar "sdi" 0)
+
+;; enable drawing indexing
+(setvar "indexctl" 1)
+
+;; Disable *.BAK Files
+;;(setvar "isavebak" 0)
+
+;; Enable *.BAK files
+(setvar "isavebak" 1)
+
+;; Redirect *.BAK files
+(setenv "AcetMoveBak" "d:\\ACAD") ; 03/14/14 W2
+
+;; Disable redirect *.BAK files
+;(setenv "ActMoveBak" "")          ; 03/14/14 W2
+
+;; Lock osnaps to 0 z plane
+(setvar "osnapz" 1)
+
+;; Disable plot stamp logging
+(command "-plotstamp" "Log" "no" "plot.log" "")(princ "\n")
+
+;; enable xref demand loading with copy
+(setvar "xloadctl" 2)
+
+;;allow others to refedit current drawing
+(setvar "xedit" 1)
+
+;; maintain changes to xref layer changes
+(setvar "visretain" 1)
+
+;; disable visual fidelity
+(setvar "SAVEFIDELITY" 0)
+
+;;force field evaluation setting to turn on all options
+(setvar "fieldeval" 31)
+
+;;disable rollover tooltips
+(setvar "rollovertips" 0)
+
+;;force UPDATETHUMBNAILS to only update when drawing is saved
+(setvar "UPDATETHUMBNAIL" 16)
+
+;;Force layer evaluation off
+(setvar "LAYEREVALCTL" 0)
+
+;;Force audit logging off
+(setvar "AUDITCTL" 0)
+
+;;automatically save workspace changes [W2]
+(setvar "WSAUTOSAVE" 1)
+
+;;disable hidden frame selection [W2]
+;;(setvar "FRAMESELECTION" 0) ;handled in RAMSA 2014.arg
+
+;;set default hatch pattern name [W2]
+(setvar "hpname" "ANSI31")
+
+;;set default hatch pattern scale [W2]
+(setvar "hpscale" 20)
+
+;; check for the adt dimscale overide option and turns it off
+(defun adt-dso ( / aec_vars aec_vars_dwg_setup)  
+  (setq aec_vars (cdr (assoc -1 (dictsearch (namedobjdict) "AEC_VARS"))))
+  (if aec_vars (progn             ; KJK [was bombing if dict not present]
+    (setq aec_vars_dwg_setup (dictsearch aec_vars "AEC_VARS_DWG_SETUP"))
+    (if (= 1 (cdr (assoc 280 aec_vars_dwg_setup)))
+      (progn
+        (setq aec_vars_dwg_setup (subst (cons 280 0) (cons 280 1) aec_vars_dwg_setup))
+        (entmod aec_vars_dwg_setup)
+      )
+    )
+  ))
+  (princ)
+)
+(adt-dso)
+
+;; set annotative scaling options
+(setvar "ANNOALLVISIBLE" 0)
+(setvar "ANNOAUTOSCALE" -1)
+
+;; Drawing Cleanup
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Run first time and every tenth time thereafter
+(defun ramsa_audit (/ num)
+  (setq num (atoi (kcs_getxrecord "RAMSA" "AuditNum"))) ; defined in kcs_base.lsp
+  (if (> num 9)(setq num 0))
+  (if (= num 0)(progn
+    (princ "\nRunning Audit and Purge... ")
+    ;; Force an audit on all drawings
+    (command "audit" "y")
+    
+    ;; Purge everything
+;    (command "-purge" "All" "*" "no")
+    (command "-PURGE" "All" "*" "No" "-PURGE" "Regapps" "*" "No") ; 10/11/13 W2
+    (princ "done. ")
+  ))
+  (kcs_setxrecord "RAMSA" "AuditNum" (itoa (1+ num))); num stored in dictionary object
+  (princ)
+)
+(ramsa_audit)  
+
+;; Make sure MEASUREMENT sysvar is set correctly for current INSUNITS sysvar [KCS]
+(cond
+  ((member (getvar "insunits") '(1 2 3 8 9 10)) (setvar "measurement" 0)) ; Imperial
+  ((member (getvar "insunits") '(4 5 6 7 11 12 13 14 15 16 17)) (setvar "measurement" 1)) ; Metric
+  ; no change for 0, 18, 19, 20
+)
+
+;Load DGNPURGE command
+;;(command "NETLOAD" "O:\\Reference\\AutoCAD\2014\\Support\\DGN_Hotfix")  ; 02/26/2014 W2
+
+
+;;Add a support path for additional hatch patterns
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(if (and  (not (findfile "PatternPath.txt"))
+          ;(findfile "O:\\Reference\\AutoCAD\\2010\\Support\\pats\\placeholder.txt")
+          (findfile (strcat rsa#support "pats\\PatternPath.txt")) ; KJK
+    )
+;   (setenv "ACAD" (strcat (getenv "ACAD") ";O:\\Reference\\AutoCAD\\2010\\Support\\pats"))
+  (setenv "ACAD" (strcat (getenv "ACAD") ";" rsa#support "pats")) ; 2/27/12 KCS
+)
+
+;;Add a support path for custom linetypes
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(if (and  (not (findfile "linetypes.txt"))
+          ;(findfile "O:\\Reference\\AutoCAD\\2010\\Support\\Linetypes\\linetypes.txt")
+          (findfile (strcat rsa#support "Linetypes\\linetypes.txt")) ; KJK
+    )
+;   (setenv "ACAD" (strcat (getenv "ACAD") ";O:\\Reference\\AutoCAD\\2010\\Support\\Linetypes"))
+  (setenv "ACAD" (strcat (getenv "ACAD") ";" rsa#support "Linetypes")) ; 2/27/12 KCS
+
+)
+
+;;Add a support path for additional fonts
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(if (and  (not (findfile "Tssdeng2.shx"))
+          ;(findfile "O:\\Reference\\AutoCAD\\2010\\Support\\Fonts\\Tssdeng2.shx")
+          (findfile (strcat rsa#support "Fonts\\fonts.txt")) ; KJK
+    )
+;   (setenv "ACAD" (strcat (getenv "ACAD") ";O:\\Reference\\AutoCAD\\2010\\Support\\Fonts"))
+  (setenv "ACAD" (strcat (getenv "ACAD") ";" rsa#support "Fonts")) ; 2/27/12 KCS
+)
+
+;;Add a support path for additional shapes
+;;;;;;;;;;;;;;;;;;;;;;;
+
+;(if (and  (not (findfile "shapes.txt"))
+;          (findfile (strcat rsa#support "shapes\\shapes.txt")) ; KJK
+;    )
+;  (setenv "ACAD" (strcat (getenv "ACAD") ";O:\\Reference\\AutoCAD\\2012\\Support\\shapes"))
+;)
+
+;;Add a support path for property set defs
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(if (and  (not (findfile "PropertySetDefs.dwg"))
+          ;(findfile "O:\\Reference\\AutoCAD\\2010\\Content\\AEC Content\\Imperial\\Documentation\\Schedule Tags\\PropertySetDefs.dwg")
+          (findfile (strcat rsa#content "AEC Content\\Imperial\\Documentation\\Schedule Tags\\PropertySetDefs.dwg")) ; KJK
+    )
+;   (setenv "ACAD" (strcat (getenv "ACAD") ";O:\\Reference\\AutoCAD\\2010\\Content\\AEC Content\\Imperial\\Documentation\\Schedule Tags"))
+  (setenv "ACAD" (strcat (getenv "ACAD") ";" rsa#content "AEC Content\\Imperial\\Documentation\\Schedule Tags"))
+)
+
+;;Add a support path for additional fonts
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(if (and  (not (findfile "fonts.shx"))
+          (findfile (strcat rsa#support "Fonts\\fonts.shx")) ; CP
+    )
+  (setenv "ACAD" (strcat (getenv "ACAD") ";" rsa#support "Fonts"))
+)
+
+;;Add a support path for additional shapes
+;;;;;;;;;;;;;;;;;;;;;;;
+
+(if (and  (not (findfile "shapes.shp"))
+          (findfile (strcat rsa#support "Shapes\\shapes.shp")) ; CP
+    )
+  (setenv "ACAD" (strcat (getenv "ACAD") ";" rsa#support "Shapes"))
+) 
+
+;;load the necessary arx file to ensure that the "last saved by" field will work
+;;;;;;;;;;;;;;;;;;;;;;;
+(arxload "AcSiUI.ARX" NIL)
+
+;;redefine UNITS command to show AECDWGSETUP instead [W2]
+;;;;;;;;;;;;;;;;;;;;;;;
+;
+;(command ".undefine" "UNITS")
+(defun c:UNITS()
+  (command "aecdwgsetup")
+  (princ)
+)
+
+;;Load assorted subroutines
+;;;;;;;;;;
+
+;;load Annotative text and dimension routines for use on palettes
+(load (strcat rsa#plugins "Ramsa_Annotative_Text")) ; KJK
+(load (strcat rsa#plugins "Ramsa_Annotative_Dims")) ; KJK
+(load (strcat rsa#plugins "Ramsa_MLeaders")) ; KJK 4/8/10
+(load (strcat rsa#plugins "RamsaBlock")) ; KJK 8/30/10
+
+;;Load up shrub and bush commands for landscape drawings
+(load (strcat rsa#plugins "RHedge")) ; KJK
+(load (strcat rsa#plugins "RBush")) ; KJK
+(load (strcat rsa#plugins "Shrub")) ; W2 8/1/2014
+
+;;Load spiral routine
+(load (strcat rsa#plugins "Spiral")) ; KJK
+
+;;for Finding foci of ellipses
+(load (strcat rsa#plugins "ell-foci")) ; KJK
+
+;;for Flattening blocks
+(load (strcat rsa#plugins "flatblk")) ; KJK [spelling corrected per file name]
+
+;;for Forcing arrows and dots on dimensions
+(load (strcat rsa#plugins "Dimoverrides")) ; KJK
+
+;;for stripping MText Overrides
+(load (strcat rsa#plugins "StripMtext")) ; 
+
+;;for Paper Space revision clouds
+(load (strcat rsa#plugins "REVCLOUD_PS")) ; 
+
+;;for Replacing page setups
+(load (strcat rsa#plugins "PageSetups")) ; 
+
+;;for Converting leaders and text to mtext
+(load (strcat rsa#plugins "l2m")) ; 
+
+;;for Rotating multipe blocks
+(load (strcat rsa#plugins "brot")) ;
+
+;;for Creating a quick archive of a file
+(load (strcat rsa#plugins "DwgBackup_BD")) ; command name: BACKUP
+ 
+;;Import named user coordinate systems from selected source file.
+(load (strcat rsa#plugins "ImportUCS")) ;
+
+;; The following code from Autodesk detects and deletes the Acad.vlx virus
+(defun cleanvirus( / lspfiles lspfile x)
+  (setq lspfiles '("acad.vlx" "logo.gif"))
+  (foreach lspfile lspfiles 
+    (while (setq x (findfile lspfile))
+      (progn
+        (vl-file-delete x)
+        (princ "\nDeleted file ")
+        (princ x)
+      );progn
+    );while
+  );foreach
+)
+(cleanvirus)
+
+(setq ramsa#reactors T) ; 4/23/12 [KCS]  ; DO NOT RENAME THIS GLOBAL VAR!
+
+;============================================================================|
+; CUSTOM COMMANDS
+; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+(defun c:RAMSA_DETAIL_BOUNDARY() ; stub function - KJK 8/30/10
+  (load (strcat rsa#plugins "Detail_Boundary"))
+  (c:RAMSA_DETAIL_BOUNDARY)
+)
+; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+; Command to disable reactors
+(defun c:RAMSA_DISABLE () 
+  (setq ramsa#reactors nil) ; DO NOT RENAME THIS GLOBAL VAR!
+  (princ "\nRAMSA reactors are de-activated. ")
+  (princ)
+)
+; Command to re-anable reactors
+(defun c:RAMSA_ENABLE () 
+  (setq ramsa#reactors T) ; DO NOT RENAME THIS GLOBAL VAR!
+  (princ "\nRAMSA reactors are re-activated. ")
+  (princ)
+)
+; - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+; Command to put all xrefs on eponymous layer [KCS - 4/23/12]
+(defun c:RAMSA_XREFS2LAYERS (/ ss n obj bname layer moved)
+  (setq
+    ss (ssget "_X" '((0 . "INSERT")(410 . "Model")))
+    n 0
+    moved 0
+  )
+  (if ss (repeat (sslength ss)
+    (setq
+      obj (vlax-ename->vla-object (ssname ss n))
+      n (1+ n)
+      bname (vla-get-name obj)
+      layer (vla-get-layer obj)
+    )
+    (if (and  (kcs_isxref bname) (/= (strcase bname)(strcase layer)))(progn
+      (if (null (tblsearch "layer" bname))
+        (command "_-layer" "_N" bname "")
+      )
+      (vla-put-layer obj bname)
+      (princ (strcat "\nXref \"" bname "\" moved from layer " layer " to " bname))
+      (setq moved (1+ moved))
+    ))
+  ))
+  (princ (strcat "\n" (itoa moved) " xrefs moved to proper layers. "))
+  (princ)
+);c:RAMSA_XREFS2LAYERS
+
+
+;============================================================================|
+
+
+;;;;;;;;;;;;;;;;;;;;;;;
+(prompt "\n ramsadoc.lsp v4")
+;(princ)
